@@ -1,23 +1,23 @@
 name: Auto Release
 
-  on:
-    workflow_call:
+on:
+  workflow_call:
     
-  jobs:
-    release:
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v3
-        - uses: fabasoad/data-format-converter-action@main
-          id: xml2json
-          with:
-            input: 'Config/module.xml'
-            from: 'xml'
-            to: 'json'
-        - name: Print result
-          run: echo "${{ fromJSON(steps.xml2json.outputs.output).module.version }}"        
-        - name: Create Release
-          uses: ncipollo/release-action@v1.12.0
-          with:
-            tag: ${{ fromJSON(steps.xml2json.outputs.output).module.version }}
-            skipIfReleaseExists: true
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: fabasoad/data-format-converter-action@main
+        id: xml2json
+        with:
+          input: 'Config/module.xml'
+          from: 'xml'
+          to: 'json'
+      - name: Print result
+        run: echo "${{ fromJSON(steps.xml2json.outputs.output).module.version }}"        
+      - name: Create Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          tag: ${{ fromJSON(steps.xml2json.outputs.output).module.version }}
+          skipIfReleaseExists: true
