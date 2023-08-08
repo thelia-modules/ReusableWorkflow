@@ -17,6 +17,9 @@ jobs:
       - name: Get commit sha
         shell: bash
         run: echo "COMMIT_SHA=$(echo ${GITHUB_SHA})" >> $GITHUB_ENV
+      - name: Display commit sha
+        shell: bash
+        run: echo ${ env.COMMIT_SHA }
       - uses: rickstaa/action-create-tag@v1
         id: "tag_create"
         with:
