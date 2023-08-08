@@ -7,19 +7,20 @@ jobs:
   auto_release:
     runs-on: ubuntu-latest
     steps:
+      - name: Get branch name
+        shell: bash
+        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr / -)" >> $GITHUB_ENV
       - uses: actions/checkout@v3
+        with:
+          ref: $BRANCH_NAME
       - uses: fabasoad/data-format-converter-action@main
         id: xml2json
         with:
           input: 'Config/module.xml'
           from: 'xml'
           to: 'json'    
-      - name: Get branch name
-        shell: bash
-        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr / -)" >> $GITHUB_ENV
       - name: Create Release
         uses: ncipollo/release-action@v1.12.0
         with:
-          commit: $BRANCH_NAME
           tag: ${{ fromJSON(steps.xml2json.outputs.output).module.version }}
           skipIfReleaseExists: true
