@@ -17,5 +17,6 @@ jobs:
       - name: Create Release
         uses: ncipollo/release-action@v1.12.0
         with:
+          commit: ${{ github.head_ref }}
           tag: ${{ fromJSON(steps.xml2json.outputs.output).module.version }}
           skipIfReleaseExists: true
