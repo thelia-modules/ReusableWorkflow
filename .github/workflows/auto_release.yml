@@ -11,7 +11,7 @@ jobs:
       - uses: fabasoad/data-format-converter-action@main
         id: xml2json
         with:
-          input: 'Config/module.xml'
+          source-pattern: 'Config/module.xml'
           from: 'xml'
           to: 'json'
       - name: Get commit sha
