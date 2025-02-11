@@ -8,10 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: fabasoad/data-format-converter-action@main
+      - uses: fabasoad/data-format-converter-action@v0.2.4
         id: xml2json
         with:
-          source-pattern: 'Config/module.xml'
+          input: 'Config/module.xml'
           from: 'xml'
           to: 'json'
       - name: Get commit sha
