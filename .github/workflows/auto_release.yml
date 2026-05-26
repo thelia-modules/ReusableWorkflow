@@ -2,7 +2,7 @@ name: Auto Release
 
 on:
   workflow_call:
-    
+
 jobs:
   auto_release:
     runs-on: ubuntu-latest
@@ -21,13 +21,27 @@ jobs:
       - name: Display commit sha
         shell: bash
         run: echo ${{steps.commit_sha.outputs.commit_sha}}
+      - name: Check if tag already exists
+        id: tag_check
+        shell: bash
+        run: |
+          tag="${{ fromJSON(steps.xml2json.outputs.output).module.version }}"
+          if git ls-remote --tags origin "refs/tags/${tag}" | grep -q .; then
+            echo "tag '${tag}' already exists on origin — skipping tag/release"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag '${tag}' missing — will create"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: rickstaa/action-create-tag@v1
+        if: steps.tag_check.outputs.exists != 'true'
         id: "tag_create"
         with:
           tag: ${{ fromJSON(steps.xml2json.outputs.output).module.version }}
           tag_exists_error: false
           commit_sha: ${{steps.commit_sha.outputs.commit_sha}}
       - name: Create Release
+        if: steps.tag_check.outputs.exists != 'true'
         uses: ncipollo/release-action@v1.12.0
         with:
           tag: ${{ fromJSON(steps.xml2json.outputs.output).module.version }}
