@@ -63,21 +63,23 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check out the module at the head of the pull request
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           path: module
 
       - name: Check out the CI scripts
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: thelia-modules/ReusableWorkflow
           ref: ${{ inputs.ci-ref }}
           path: module-ci
 
       - name: Check the version of Config/module.xml
-        run: '"$CI_DIR/scripts/module-ci/version-check.sh" "$MODULE_DIR" "${{ github.event.pull_request.base.ref }}"'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: '"$CI_DIR/scripts/module-ci/version-check.sh" "$MODULE_DIR" "$BASE_REF"'
 
   published:
     name: Install on published Thelia
@@ -86,13 +88,13 @@ jobs:
     steps:
       - &checkout-module
         name: Check out the module
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           path: module
 
       - &checkout-ci
         name: Check out the CI scripts
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: thelia-modules/ReusableWorkflow
           ref: ${{ inputs.ci-ref }}
@@ -104,7 +106,7 @@ jobs:
 
       - &setup-php
         name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
         with:
           php-version: ${{ inputs.php-version }}
           ini-values: post_max_size=20M
@@ -130,7 +132,7 @@ jobs:
       - *checkout-module
       - *checkout-ci
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
         with:
           php-version: ${{ inputs.php-version }}
           coverage: none
@@ -160,7 +162,7 @@ jobs:
           [ "$has_tests" = true ] || echo "The module has no PHPUnit test." >> "$GITHUB_STEP_SUMMARY"
       - name: Check out thelia/thelia main
         if: steps.tests.outputs.has_tests == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: thelia/thelia
           ref: main
@@ -170,7 +172,7 @@ jobs:
         run: sudo systemctl start mysql.service
       - name: Setup PHP
         if: steps.tests.outputs.has_tests == 'true'
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
         with:
           php-version: ${{ inputs.php-version }}
           ini-values: post_max_size=20M
@@ -211,7 +213,7 @@ jobs:
       - *checkout-module
       - *checkout-ci
       - name: Check out thelia/thelia main
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: thelia/thelia
           ref: main
