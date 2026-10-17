@@ -113,8 +113,7 @@ jobs:
           extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, mysql, gd, zip
           tools: composer
 
-      - &published-shop
-        name: Create a shop from Packagist with the module, install it, activate the module
+      - name: Create a shop from Packagist with the module, install it, activate the module
         run: '"$CI_DIR/scripts/module-ci/published-shop.sh" "$MODULE_DIR" "$SHOP_DIR"'
 
       - name: Boot the container, serve the storefront and the back-office login
@@ -130,17 +129,15 @@ jobs:
     steps:
       - *checkout-module
       - *checkout-ci
-      - *start-mysql
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ inputs.php-version }}
-          ini-values: post_max_size=20M
           coverage: none
           extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, mysql, gd, zip
           tools: composer, phpstan
-      # The install generates the Propel models the module extends.
-      - *published-shop
+      - name: Create a shop from Packagist with the module, without installing it
+        run: '"$CI_DIR/scripts/module-ci/published-shop.sh" "$MODULE_DIR" "$SHOP_DIR" --no-install'
       - name: Analyse the module
         run: |
           source "$CI_DIR/scripts/module-ci/lib.sh"

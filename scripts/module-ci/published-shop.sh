@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Builds a shop the way a new user does (composer create-project thelia/thelia-project, the
 # latest published core and modules), with the module under test replacing its published copy,
-# installs it and activates the module.
-# Usage: published-shop.sh <module-dir> <shop-dir>
+# installs it and activates the module. With --no-install, stops once the packages are in place.
+# Usage: published-shop.sh <module-dir> <shop-dir> [--no-install]
 set -euo pipefail
 module_dir=$(realpath "$1")
 shop_dir=$2
+install=${3:-}
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -37,6 +38,7 @@ if ! cmp -s "$module_dir/Config/module.xml" "$installed/Config/module.xml"; then
     echo "::error::$installed is not the checkout under test"
     exit 1
 fi
+[ "$install" = --no-install ] && exit 0
 
 php bin/install \
     --frontoffice_theme=flexy --backoffice_theme=default-twig \
