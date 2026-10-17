@@ -11,7 +11,7 @@ base_branch=$2
 source "$(dirname "$(realpath "$0")")/lib.sh"
 
 # Paths that do not change the installed module: documentation, CI, tests, repository metadata.
-not_shipped='^(.*\.md|docs/.*|\.github/.*|Tests/.*|tests/.*|phpunit[^/]*\.xml(\.dist)?|\.gitignore|\.gitattributes|\.editorconfig|\.scrutinizer\.yml|LICENSE.*|COPYING.*)$'
+not_shipped='^(.*\.md|docs/.*|\.github/.*|Tests/.*|tests/.*|phpunit[^/]*\.xml(\.dist)?|\.gitignore|\.gitattributes|\.editorconfig|\.scrutinizer\.yml|LICENSE.*|COPYING.*|phpstan[^/]*\.neon(\.dist)?|rector\.php|\.php-cs-fixer[^/]*)$'
 
 git fetch --no-tags --quiet origin "+refs/heads/$base_branch:refs/remotes/origin/$base_branch"
 merge_base=$(git merge-base "origin/$base_branch" HEAD)

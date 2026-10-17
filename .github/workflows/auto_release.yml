@@ -58,7 +58,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          not_shipped='^(.*\.md|docs/.*|\.github/.*|Tests/.*|tests/.*|phpunit[^/]*\.xml(\.dist)?|\.gitignore|\.gitattributes|\.editorconfig|\.scrutinizer\.yml|LICENSE.*|COPYING.*)$'
+          not_shipped='^(.*\.md|docs/.*|\.github/.*|Tests/.*|tests/.*|phpunit[^/]*\.xml(\.dist)?|\.gitignore|\.gitattributes|\.editorconfig|\.scrutinizer\.yml|LICENSE.*|COPYING.*|phpstan[^/]*\.neon(\.dist)?|rector\.php|\.php-cs-fixer[^/]*)$'
           git fetch --quiet --force origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
           unreleased=$(git diff --name-only "refs/tags/${VERSION}" "$GITHUB_SHA" | grep -Ev "$not_shipped" || true)
           if [ -n "$unreleased" ]; then
