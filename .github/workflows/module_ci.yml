@@ -63,14 +63,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check out the module at the head of the pull request
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           path: module
 
       - name: Check out the CI scripts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: thelia-modules/ReusableWorkflow
           ref: ${{ inputs.ci-ref }}
@@ -86,13 +86,13 @@ jobs:
     steps:
       - &checkout-module
         name: Check out the module
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: module
 
       - &checkout-ci
         name: Check out the CI scripts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: thelia-modules/ReusableWorkflow
           ref: ${{ inputs.ci-ref }}
@@ -135,6 +135,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ inputs.php-version }}
+          ini-values: post_max_size=20M
           coverage: none
           extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, mysql, gd, zip
           tools: composer, phpstan
@@ -162,7 +163,7 @@ jobs:
           [ "$has_tests" = true ] || echo "The module has no PHPUnit test." >> "$GITHUB_STEP_SUMMARY"
       - name: Check out thelia/thelia main
         if: steps.tests.outputs.has_tests == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: thelia/thelia
           ref: main
@@ -213,7 +214,7 @@ jobs:
       - *checkout-module
       - *checkout-ci
       - name: Check out thelia/thelia main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: thelia/thelia
           ref: main
