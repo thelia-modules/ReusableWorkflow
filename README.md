@@ -51,7 +51,7 @@ jobs:
 |---|---|
 | Version bump | pull requests only: a change to what ships moves `<version>` past the base branch, to a version without a tag |
 | Install on published Thelia | `composer create-project thelia/thelia-project` with the checkout in place of the released module, `bin/install`, `module:activate`, `lint:container`, `cache:warmup`, `/` and `/admin/login` answer 200 |
-| PHPStan level 0 on published Thelia | every class, function and method the module calls exists in the published core |
+| PHPStan level 0 on published Thelia | every class, function and method the module calls exists in the published core (symbols guarded by `class_exists()` go in a `phpstan-baseline.neon` at the module root) |
 | Module tests | the PHPUnit tests of the module inside `thelia/thelia` `main` (its own `phpunit.xml.dist` first) |
 | Signal: install on Thelia main | the install job on the development tip of Thelia; information only, never fails the workflow |
 
