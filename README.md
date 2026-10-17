@@ -18,6 +18,18 @@ Rules for a module pull request:
 - A fix that leaves the module broken can be merged without a bump on purpose: nothing is
   released until the bump.
 
+Version rules (a run that breaks one fails and tags nothing):
+
+- `<version>` is a valid [semantic version](https://semver.org): `MAJOR.MINOR.PATCH`, optionally
+  followed by `-prerelease`, without a leading `v` (`1.2.3`, `1.2.0-beta1`; not `v1.2.3`, `1.2`).
+- It is strictly greater than the greatest semantic-version tag of the repository, by semver
+  precedence (`1.10.0` is above `1.9.9`; `1.2.0` is above `1.2.0-beta1`, not the other way round).
+  Tags that are not semantic versions are ignored.
+- A version containing a hyphen (`1.2.0-beta1`) is published as a GitHub pre-release.
+
+The workflow asks for `contents: write` (tag and release). The `release.yml` of a module that sets
+its own `permissions:` must grant at least that to the calling job.
+
 Checks of the workflow:
 
 - When the version is already tagged and something that ships changed since that tag, the run

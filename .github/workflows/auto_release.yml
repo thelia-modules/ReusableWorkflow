@@ -7,9 +7,18 @@ name: Auto Release
 # without moving <version> to a new version publishes nothing, and this workflow fails to say so.
 # The pull request has to bump Config/module.xml itself, to a version nobody tagged meanwhile
 # (two pull requests aiming at the same version: the second takes the next one).
+#
+# A version to tag must be a valid semantic version (https://semver.org) strictly greater than the
+# greatest semantic-version tag of the repository, or the run fails and tags nothing. A version
+# with a hyphen (1.2.0-beta1) is published as a pre-release.
 
 on:
   workflow_call:
+
+# Tagging and releasing write to the repository; nothing else is needed. The calling job
+# (release.yml of the module) must grant at least these permissions.
+permissions:
+  contents: write
 
 # Two pushes in a row: the second run waits for the first one, then sees its tag.
 concurrency:
@@ -20,7 +29,7 @@ jobs:
   auto_release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 
@@ -69,6 +78,50 @@ jobs:
           fi
           echo "Nothing that ships changed since tag ${VERSION}."
 
+      - name: Check that the version is a semantic version above every existing tag
+        # Nothing is tagged or published when the version is malformed or does not move past the
+        # greatest tag: a typo such as 10.0.0 for 1.0.0 would otherwise outrank every later release.
+        if: steps.tag_check.outputs.exists != 'true'
+        id: semver
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag --list > "$RUNNER_TEMP/tags.txt"
+          python3 - "$VERSION" "$RUNNER_TEMP/tags.txt" <<'PY'
+          import re, sys
+          SEMVER = re.compile(r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$')
+
+          def key(version):
+              major, minor, patch, pre = SEMVER.match(version).groups()
+              core = (int(major), int(minor), int(patch))
+              if pre is None:
+                  return core, (1,)
+              parts = tuple((0, int(p), '') if p.isdigit() else (1, 0, p) for p in pre.split('.'))
+              return core, (0, parts)
+
+          def fail(message):
+              print(f'::error file=Config/module.xml::{message}')
+              sys.exit(1)
+
+          version = sys.argv[1]
+          if not SEMVER.match(version):
+              fail(f'<version> "{version}" is not a valid semantic version (expected MAJOR.MINOR.PATCH, optionally -prerelease, no leading v): nothing is tagged')
+          tags = [t for t in open(sys.argv[2]).read().split() if SEMVER.match(t)]
+          if tags:
+              greatest = max(tags, key=key)
+              print(f'greatest existing tag: {greatest}')
+              if not key(version) > key(greatest):
+                  fail(f'<version> {version} is not strictly greater than the existing tag {greatest}: nothing is tagged. Take a version above {greatest}')
+          else:
+              print('no semantic-version tag yet')
+          print(f'version {version} is valid and above every existing tag')
+          PY
+          case "$VERSION" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT"; echo "hyphen in the version: published as a pre-release" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: Check that the pushed commit is still the tip of the branch
         # A later push holds this commit and tags its own head: tagging this one would publish a
         # version without what came after it.
@@ -84,7 +137,7 @@ jobs:
             echo "is_tip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: rickstaa/action-create-tag@v1
+      - uses: rickstaa/action-create-tag@a1c7777fcb2fee4f19b0f283ba888afa11678b72 # v1.7.2
         if: steps.tag_check.outputs.exists != 'true' && steps.tip.outputs.is_tip == 'true'
         id: "tag_create"
         with:
@@ -94,9 +147,10 @@ jobs:
 
       - name: Create Release
         if: steps.tag_check.outputs.exists != 'true' && steps.tip.outputs.is_tip == 'true'
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@a2e71bdd4e7dab70ca26a852f29600c98b33153e # v1.12.0
         with:
           tag: ${{ steps.version.outputs.version }}
+          prerelease: ${{ steps.semver.outputs.prerelease }}
           skipIfReleaseExists: true
 
       - name: Check the tag against the pushed commit and the tip of the branch
