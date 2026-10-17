@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # Actions are pinned by SHA (tag in a comment): Dependabot proposes the new SHA and updates the comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
