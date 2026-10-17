@@ -1,48 +1,119 @@
 name: Auto Release
 
+# Called on every push to the main branch of a module. Tags and releases the <version> of
+# Config/module.xml when that version has no tag yet, on the pushed commit.
+#
+# A version already tagged is never released again: a push that changes what the module ships
+# without moving <version> to a new version publishes nothing, and this workflow fails to say so.
+# The pull request has to bump Config/module.xml itself, to a version nobody tagged meanwhile
+# (two pull requests aiming at the same version: the second takes the next one).
+
 on:
   workflow_call:
+
+# Two pushes in a row: the second run waits for the first one, then sees its tag.
+concurrency:
+  group: auto-release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   auto_release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: fabasoad/data-format-converter-action@v0.2.4
-        id: xml2json
+      - uses: actions/checkout@v5
         with:
-          input: 'Config/module.xml'
-          from: 'xml'
-          to: 'json'
-      - name: Get commit sha
+          fetch-depth: 0
+
+      - name: Read the module version
+        id: version
         shell: bash
-        run: echo "commit_sha=$(echo ${GITHUB_SHA})" >> "$GITHUB_OUTPUT"
-        id: commit_sha
-      - name: Display commit sha
-        shell: bash
-        run: echo ${{steps.commit_sha.outputs.commit_sha}}
+        run: |
+          version=$(tr -d '\r' < Config/module.xml | sed -n 's:.*<version>[[:space:]]*\([^<[:space:]]*\)[[:space:]]*</version>.*:\1:p' | head -n 1)
+          if [ -z "$version" ]; then
+            echo "::error file=Config/module.xml::no <version> in Config/module.xml"
+            exit 1
+          fi
+          echo "module version $version, pushed commit $GITHUB_SHA"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Check if tag already exists
         id: tag_check
         shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          tag="${{ fromJSON(steps.xml2json.outputs.output).module.version }}"
-          if git ls-remote --tags origin "refs/tags/${tag}" | grep -q .; then
-            echo "tag '${tag}' already exists on origin — skipping tag/release"
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" > /dev/null; then
+            echo "tag '${VERSION}' already exists on origin — skipping tag/release"
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "tag '${tag}' missing — will create"
+            echo "tag '${VERSION}' missing — will create"
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: rickstaa/action-create-tag@v1
+
+      - name: Check that the tagged version holds everything that ships
+        # The version is tagged already. Anything that ships and changed since that tag is on
+        # main and in no release: say it, the next pull request must bump Config/module.xml.
+        if: steps.tag_check.outputs.exists == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          not_shipped='^(.*\.md|docs/.*|\.github/.*|Tests/.*|tests/.*|phpunit[^/]*\.xml(\.dist)?|\.gitignore|\.gitattributes|\.editorconfig|\.scrutinizer\.yml|LICENSE.*|COPYING.*)$'
+          git fetch --quiet --force origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
+          unreleased=$(git diff --name-only "refs/tags/${VERSION}" "$GITHUB_SHA" | grep -Ev "$not_shipped" || true)
+          if [ -n "$unreleased" ]; then
+            echo "Changed since tag ${VERSION} and released nowhere:"
+            echo "$unreleased"
+            echo "::error file=Config/module.xml::<version> is still ${VERSION}, already tagged on $(git rev-parse --short "refs/tags/${VERSION}^{commit}"): the changes pushed since then are not released. Bump Config/module.xml to the next version."
+            exit 1
+          fi
+          echo "Nothing that ships changed since tag ${VERSION}."
+
+      - name: Check that the pushed commit is still the tip of the branch
+        # A later push holds this commit and tags its own head: tagging this one would publish a
+        # version without what came after it.
         if: steps.tag_check.outputs.exists != 'true'
+        id: tip
+        shell: bash
+        run: |
+          tip=$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)
+          if [ "$tip" != "$GITHUB_SHA" ]; then
+            echo "::warning::${GITHUB_REF_NAME} moved to ${tip} since this push: the run of the later push tags it"
+            echo "is_tip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_tip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: rickstaa/action-create-tag@v1
+        if: steps.tag_check.outputs.exists != 'true' && steps.tip.outputs.is_tip == 'true'
         id: "tag_create"
         with:
-          tag: ${{ fromJSON(steps.xml2json.outputs.output).module.version }}
+          tag: ${{ steps.version.outputs.version }}
           tag_exists_error: false
-          commit_sha: ${{steps.commit_sha.outputs.commit_sha}}
+          commit_sha: ${{ github.sha }}
+
       - name: Create Release
-        if: steps.tag_check.outputs.exists != 'true'
+        if: steps.tag_check.outputs.exists != 'true' && steps.tip.outputs.is_tip == 'true'
         uses: ncipollo/release-action@v1.12.0
         with:
-          tag: ${{ fromJSON(steps.xml2json.outputs.output).module.version }}
+          tag: ${{ steps.version.outputs.version }}
           skipIfReleaseExists: true
+
+      - name: Check the tag against the pushed commit and the tip of the branch
+        if: steps.tag_check.outputs.exists != 'true' && steps.tip.outputs.is_tip == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git fetch --quiet --force origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
+          tagged=$(git rev-parse "refs/tags/${VERSION}^{commit}")
+          tip=$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)
+          echo "tag ${VERSION}: ${tagged}, pushed: ${GITHUB_SHA}, ${GITHUB_REF_NAME}: ${tip}"
+          if [ "$tagged" != "$GITHUB_SHA" ]; then
+            echo "::error::tag ${VERSION} points to ${tagged}, not to the pushed commit ${GITHUB_SHA}"
+            exit 1
+          fi
+          if [ "$tip" != "$GITHUB_SHA" ]; then
+            echo "::error::${GITHUB_REF_NAME} moved to ${tip} while ${VERSION} was tagged on ${GITHUB_SHA}: what came after is not in ${VERSION}, bump Config/module.xml"
+            exit 1
+          fi
