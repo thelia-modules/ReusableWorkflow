@@ -20,6 +20,9 @@ $root = getcwd().DIRECTORY_SEPARATOR;
 if (!defined('THELIA_ROOT')) {
     define('THELIA_ROOT', $root);
 }
+// The Propel builders write under var/propel/<APP_ENV>/.
+$_SERVER['APP_ENV'] = $_ENV['APP_ENV'] = 'test';
+putenv('APP_ENV=test');
 $loader = require $root.'vendor/autoload.php';
 $models = $root.'var/propel/test/model';
 if (!is_dir($models.'/Thelia/Model/Base')) {
@@ -45,7 +48,11 @@ $loader->addPsr4('TheliaMain\\', $root.'var/propel/test/database/TheliaMain');
 PHP
 # Once before the analysis: the parallel workers of PHPStan then find the models in place.
 php "$bootstrap"
-ls "var/propel/test/model/Thelia/Model/Base" > /dev/null
+if [ ! -d var/propel/test/model/Thelia/Model/Base ]; then
+    echo "::error::the Propel models were not generated under var/propel/test/model"
+    find var/propel -maxdepth 3 -type d | head -n 20
+    exit 1
+fi
 
 config="$RUNNER_TEMP/phpstan.neon"
 cat > "$config" <<NEON
