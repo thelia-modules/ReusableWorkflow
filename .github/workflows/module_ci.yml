@@ -1,0 +1,247 @@
+name: Module CI
+
+# Called by the ci.yml of a Thelia 3 module on its pull requests and on its main branch:
+#
+#   on:
+#     pull_request:
+#       branches: [ main ]
+#     push:
+#       branches: [ main ]
+#   jobs:
+#     ci:
+#       uses: thelia-modules/ReusableWorkflow/.github/workflows/module_ci.yml@main
+#
+# Jobs:
+# - Version bump (pull requests only): a change to what the module ships must move <version> in
+#   Config/module.xml to a version that has no tag yet, or the merge is never released.
+# - Install on published Thelia: a new shop from Packagist (composer create-project
+#   thelia/thelia-project) with this checkout in place of the released module, bin/install,
+#   module activation, lint:container, cache:warmup, storefront and back-office login served.
+# - PHPStan level 0 on published Thelia: every class, function and method the module calls must
+#   exist in the published core.
+# - Module tests: the PHPUnit tests of the module, inside thelia/thelia main.
+# - Signal: install on Thelia main: the install job against the development tip of Thelia. It
+#   tells what the next core release changes for the module and never fails the workflow.
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: PHP version of every job.
+        type: string
+        default: '8.3'
+      ci-ref:
+        description: Ref of thelia-modules/ReusableWorkflow the CI scripts are read from (keep it in line with the ref of the uses line).
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Without a token, Flex skips the thelia/thelia-recipes endpoint without a word.
+  COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ github.token }}"}}'
+  COMPOSER_NO_INTERACTION: '1'
+  DATABASE_HOST: 127.0.0.1
+  DATABASE_PORT: '3306'
+  DATABASE_USER: root
+  DATABASE_PASSWORD: root
+  DATABASE_NAME: thelia
+  MODULE_DIR: ${{ github.workspace }}/module
+  CI_DIR: ${{ github.workspace }}/module-ci
+  SHOP_DIR: ${{ github.workspace }}/shop
+
+jobs:
+  version:
+    name: Version bump
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the module at the head of the pull request
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          path: module
+
+      - name: Check out the CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: thelia-modules/ReusableWorkflow
+          ref: ${{ inputs.ci-ref }}
+          path: module-ci
+
+      - name: Check the version of Config/module.xml
+        run: '"$CI_DIR/scripts/module-ci/version-check.sh" "$MODULE_DIR" "${{ github.event.pull_request.base.ref }}"'
+
+  published:
+    name: Install on published Thelia
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - &checkout-module
+        name: Check out the module
+        uses: actions/checkout@v4
+        with:
+          path: module
+
+      - &checkout-ci
+        name: Check out the CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: thelia-modules/ReusableWorkflow
+          ref: ${{ inputs.ci-ref }}
+          path: module-ci
+
+      - &start-mysql
+        name: Start MySQL
+        run: sudo systemctl start mysql.service
+
+      - &setup-php
+        name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          ini-values: post_max_size=20M
+          # A coverage driver turns JIT off with a startup warning that the server log check reads as a PHP error.
+          coverage: none
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, mysql, gd, zip
+          tools: composer
+
+      - &published-shop
+        name: Create a shop from Packagist with the module, install it, activate the module
+        run: '"$CI_DIR/scripts/module-ci/published-shop.sh" "$MODULE_DIR" "$SHOP_DIR"'
+
+      - name: Boot the container, serve the storefront and the back-office login
+        working-directory: ${{ env.SHOP_DIR }}
+        run: |
+          source "$CI_DIR/scripts/module-ci/lib.sh"
+          check_shop
+
+  phpstan:
+    name: PHPStan level 0 on published Thelia
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - *checkout-module
+      - *checkout-ci
+      - *start-mysql
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          coverage: none
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, mysql, gd, zip
+          tools: composer, phpstan
+      # The install generates the Propel models the module extends.
+      - *published-shop
+      - name: Analyse the module
+        run: |
+          source "$CI_DIR/scripts/module-ci/lib.sh"
+          "$CI_DIR/scripts/module-ci/phpstan.sh" "$SHOP_DIR" "$(module_code "$MODULE_DIR")"
+
+  tests:
+    name: Module tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_NAME: test
+    steps:
+      - *checkout-module
+      - *checkout-ci
+      - name: Look for tests
+        id: tests
+        run: |
+          has_tests=$("$CI_DIR/scripts/module-ci/has-tests.sh" "$MODULE_DIR")
+          echo "has_tests=$has_tests" >> "$GITHUB_OUTPUT"
+          [ "$has_tests" = true ] || echo "The module has no PHPUnit test." >> "$GITHUB_STEP_SUMMARY"
+      - name: Check out thelia/thelia main
+        if: steps.tests.outputs.has_tests == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: thelia/thelia
+          ref: main
+          path: shop
+      - name: Start MySQL
+        if: steps.tests.outputs.has_tests == 'true'
+        run: sudo systemctl start mysql.service
+      - name: Setup PHP
+        if: steps.tests.outputs.has_tests == 'true'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          ini-values: post_max_size=20M
+          coverage: none
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, mysql, gd, zip
+          tools: composer
+      - name: Put the module into Thelia and install the dependencies
+        if: steps.tests.outputs.has_tests == 'true'
+        run: '"$CI_DIR/scripts/module-ci/main-shop.sh" "$MODULE_DIR" "$SHOP_DIR"'
+      - name: Build the test database
+        # Creates the test database, builds the Propel models and activates every module present.
+        if: steps.tests.outputs.has_tests == 'true'
+        working-directory: ${{ env.SHOP_DIR }}
+        run: |
+          printf 'DATABASE_HOST=127.0.0.1\nDATABASE_PORT=3306\nDATABASE_USER=root\nDATABASE_PASSWORD=root\nDATABASE_NAME=test\n' > .env.test.local
+          php bin/test-prepare
+      - name: Build the theme assets and warm the test container
+        if: steps.tests.outputs.has_tests == 'true'
+        working-directory: ${{ env.SHOP_DIR }}
+        run: |
+          php bin/console importmap:install --env=test --no-debug
+          php bin/console tailwind:build --env=test --no-debug
+          php bin/console sass:build --env=test --no-debug
+          php bin/console cache:warmup --env=test --no-debug
+      - name: Run the tests of the module
+        if: steps.tests.outputs.has_tests == 'true'
+        run: |
+          source "$CI_DIR/scripts/module-ci/lib.sh"
+          "$CI_DIR/scripts/module-ci/phpunit.sh" "$SHOP_DIR" "$(module_code "$MODULE_DIR")"
+
+  main:
+    name: 'Signal: install on Thelia main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Information only: the development tip of the core may break a module before any release does.
+    continue-on-error: true
+    steps:
+      - *checkout-module
+      - *checkout-ci
+      - name: Check out thelia/thelia main
+        uses: actions/checkout@v4
+        with:
+          repository: thelia/thelia
+          ref: main
+          path: shop
+      - *start-mysql
+      - *setup-php
+      - name: Put the module into Thelia and install the dependencies
+        run: '"$CI_DIR/scripts/module-ci/main-shop.sh" "$MODULE_DIR" "$SHOP_DIR"'
+      - name: Install Thelia and activate the module
+        working-directory: ${{ env.SHOP_DIR }}
+        run: |
+          php bin/install \
+            --frontoffice_theme=flexy --backoffice_theme=default-twig \
+            --pdf_theme=default --email_theme=default \
+            --with-demo --with-admin \
+            --admin_login=thelia --admin_password=thelia \
+            --admin_first_name=Admin --admin_last_name=User \
+            --admin_email=admin@example.com
+          source "$CI_DIR/scripts/module-ci/lib.sh"
+          activate_module "$(module_code "$MODULE_DIR")"
+      - name: Build the theme assets
+        working-directory: ${{ env.SHOP_DIR }}
+        run: |
+          php bin/console importmap:install
+          php bin/console tailwind:build
+          php bin/console sass:build
+      - name: Boot the container, serve the storefront and the back-office login
+        working-directory: ${{ env.SHOP_DIR }}
+        run: |
+          source "$CI_DIR/scripts/module-ci/lib.sh"
+          check_shop
