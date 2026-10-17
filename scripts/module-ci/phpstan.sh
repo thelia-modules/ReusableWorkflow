@@ -24,6 +24,8 @@ if (!defined('THELIA_ROOT')) {
 $_SERVER['APP_ENV'] = $_ENV['APP_ENV'] = 'test';
 putenv('APP_ENV=test');
 $loader = require $root.'vendor/autoload.php';
+// The service(), param()... functions of the DI configurators live in the file of this class.
+class_exists(Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator::class);
 $models = $root.'var/propel/test/model';
 if (!is_dir($models.'/Thelia/Model/Base')) {
     $propel = new Thelia\Core\Propel\PropelInitService(
@@ -70,6 +72,13 @@ parameters:
     bootstrapFiles:
         - $bootstrap
 NEON
+
+# A module that guards a newer core API with class_exists() lists those symbols in its own
+# phpstan-baseline.neon (paths relative to the module root).
+if [ -f "$module/phpstan-baseline.neon" ]; then
+    printf 'includes:\n    - %s\n' "$module/phpstan-baseline.neon" >> "$config"
+    echo "including $module/phpstan-baseline.neon"
+fi
 
 phpstan --version
 phpstan analyse --configuration="$config" --no-progress --memory-limit=1G --error-format=github
