@@ -9,6 +9,13 @@ cd "$1"
 code=$2
 module="local/modules/$code"
 
+# Module test bootstraps written for a Thelia project require <project root>/bootstrap.php, which
+# thelia/thelia does not have: there the Composer autoload loads core/bootstrap.php, which defines
+# the same constants. An empty stand-in lets those bootstraps run unchanged.
+if [ ! -e bootstrap.php ]; then
+    printf '<?php\n\n// Stand-in for the bootstrap.php of a Thelia project: core/bootstrap.php, loaded by the autoload, defines the constants.\n' > bootstrap.php
+fi
+
 configs=()
 for file in phpunit.xml.dist phpunit.xml phpunit.integration.xml.dist; do
     [ -f "$module/$file" ] && configs+=("$module/$file")
