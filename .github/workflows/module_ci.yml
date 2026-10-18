@@ -150,7 +150,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      DATABASE_NAME: test
+      # Module tests refuse a database whose name does not end with _test.
+      DATABASE_NAME: thelia_test
     steps:
       - *checkout-module
       - *checkout-ci
@@ -187,7 +188,7 @@ jobs:
         if: steps.tests.outputs.has_tests == 'true'
         working-directory: ${{ env.SHOP_DIR }}
         run: |
-          printf 'DATABASE_HOST=127.0.0.1\nDATABASE_PORT=3306\nDATABASE_USER=root\nDATABASE_PASSWORD=root\nDATABASE_NAME=test\n' > .env.test.local
+          printf 'DATABASE_HOST=127.0.0.1\nDATABASE_PORT=3306\nDATABASE_USER=root\nDATABASE_PASSWORD=root\nDATABASE_NAME=thelia_test\n' > .env.test.local
           php bin/test-prepare
       - name: Build the theme assets and warm the test container
         if: steps.tests.outputs.has_tests == 'true'
