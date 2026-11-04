@@ -26,8 +26,15 @@ fi
 printf 'shipped file changed: %s\n' "${shipped[@]}"
 
 head_version=$(module_version .)
-base_version=$(git show "origin/$base_branch:Config/module.xml" | xml_version)
-echo "version on $base_branch: $base_version, in this pull request: $head_version"
+# A module whose first version arrives with this pull request has no module.xml on the base branch yet:
+# there is no previous version to move past, only the tags are compared.
+base_version=""
+if git cat-file -e "origin/$base_branch:Config/module.xml" 2> /dev/null; then
+    base_version=$(git show "origin/$base_branch:Config/module.xml" | xml_version)
+    echo "version on $base_branch: $base_version, in this pull request: $head_version"
+else
+    echo "no Config/module.xml on $base_branch yet: first version of the module, in this pull request: $head_version"
+fi
 
 status=0
 references=$(mktemp)
@@ -39,7 +46,11 @@ fi
 # Semantic version, strictly above every tag of the repository (read live) and the version on the base branch.
 git ls-remote --tags origin 'refs/tags/*' | sed -n 's:^[0-9a-f]*[[:space:]]*refs/tags/\(.*[^}]\)$:\1:p' > "$references"
 python3 "$semver" "$head_version" "$references" "existing tag" || status=1
-echo "$base_version" > "$references"
-python3 "$semver" "$head_version" "$references" "version on $base_branch" || status=1
-[ $status -eq 0 ] && echo "Version $head_version is valid, new and moves past $base_version." | tee -a "$summary"
+if [ -n "$base_version" ]; then
+    echo "$base_version" > "$references"
+    python3 "$semver" "$head_version" "$references" "version on $base_branch" || status=1
+    [ $status -eq 0 ] && echo "Version $head_version is valid, new and moves past $base_version." | tee -a "$summary"
+else
+    [ $status -eq 0 ] && echo "Version $head_version is valid and new: first version of the module." | tee -a "$summary"
+fi
 exit $status
